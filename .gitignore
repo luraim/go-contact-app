@@ -13,3 +13,7 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+
+contactsApp
+go_build_luraim_contact
+.idea/
