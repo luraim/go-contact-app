@@ -26,8 +26,8 @@ func NewDb() *Db {
 	}
 }
 
-// Validate validates a contact
-func (cd *Db) Validate(c *Contact) bool {
+// ValidateContact validates a contact
+func (cd *Db) ValidateContact(c *Contact) bool {
 	if len(c.Email) == 0 {
 		c.Errors["email"] = "Email is required"
 	}
@@ -45,7 +45,7 @@ func (cd *Db) Validate(c *Contact) bool {
 
 // SaveContact saves a contact to the contactsByID map and saves it to the JSON file
 func (cd *Db) SaveContact(c *Contact) error {
-	if !cd.Validate(c) {
+	if !cd.ValidateContact(c) {
 		return nil
 	}
 

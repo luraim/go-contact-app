@@ -8,3 +8,13 @@ type Contact struct {
 	Email  string
 	Errors map[string]string
 }
+
+func NewContact(first, last, phone, email string) *Contact {
+	return &Contact{
+		First:  first,
+		Last:   last,
+		Phone:  phone,
+		Email:  email,
+		Errors: make(map[string]string),
+	}
+}

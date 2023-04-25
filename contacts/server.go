@@ -43,6 +43,9 @@ func createRenderer() multitemplate.Renderer {
 		"templates/archive_ui.html",
 	)
 	r.AddFromFiles("rows", "templates/rows.html")
+	r.AddFromFiles("archive", "templates/archive_ui.html")
+	r.AddFromFiles("new", "templates/layout.html", "templates/new.html")
+	r.AddFromFiles("show", "templates/layout.html", "templates/show.html")
 	return r
 }
 
@@ -62,16 +65,15 @@ func Run() {
 	router.Use(sessions.Sessions("mysession", store))
 
 	router.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusMovedPermanently, "/contacts")
+		c.Redirect(http.StatusFound, "/contacts")
 	})
-
 	router.GET("/contacts", server.contacts)
-
-	//router.POST("/contacts/archive", server.startArchive)
-	//
-	//router.GET("/contacts/archive", server.archiveStatus)
-
-	// Add other routes here as needed
+	router.POST("/contacts/archive", server.startArchive)
+	router.GET("/contacts/archive", server.getArchiveStatus)
+	router.DELETE("/contacts/archive", server.getArchiveStatus)
+	router.GET("/contacts/archive/file", server.downloadArchiveFile)
+	router.POST("/contacts/new", server.newContact)
+	router.GET("/contacts/:contact_id", server.contactsView)
 
 	err := router.Run()
 	if err != nil {
@@ -123,20 +125,104 @@ func (sr *Server) contacts(c *gin.Context) {
 	})
 }
 
-//func (sr *Server) startArchive(c *gin.Context) {
-//	archiver := ArchiverGet()
-//	archiver.Run()
-//	c.HTML(http.StatusOK, "archive_ui.html", gin.H{
-//		"archiver": archiver,
-//	})
-//}
-//
-//func (sr *Server) archiveStatus(c *gin.Context) {
-//	archiver := ArchiverGet()
-//	c.HTML(http.StatusOK, "archive_ui.html", gin.H{
-//		"archiver": archiver,
-//	})
-//}
+func (sr *Server) startArchive(c *gin.Context) {
+	sr.archiver.Run()
+	c.HTML(http.StatusOK, "archive", gin.H{
+		"archiver": sr.archiver,
+	})
+}
+
+func (sr *Server) getArchiveStatus(c *gin.Context) {
+	c.HTML(http.StatusOK, "archive", gin.H{
+		"archiver": sr.archiver,
+	})
+}
+
+func (sr *Server) resetArchive(c *gin.Context) {
+	sr.archiver.Reset()
+	c.HTML(http.StatusOK, "archive", gin.H{
+		"archiver": sr.archiver,
+	})
+}
+
+func (sr *Server) newContact(c *gin.Context) {
+	type ContactForm struct {
+		First string `form:"first_name" binding:"required"`
+		Last  string `form:"last_name"  binding:"required"`
+		Phone string `form:"phone"      binding:"required"`
+		Email string `form:"email"      binding:"required"`
+	}
+	var form ContactForm
+	if err := c.ShouldBind(&form); err != nil {
+		c.String(http.StatusBadRequest, "bad request: %v", err)
+		return
+	}
+	contact := NewContact(form.First, form.Last, form.Phone, form.Email)
+	err := sr.db.SaveContact(contact)
+	if err != nil {
+		c.String(
+			http.StatusInternalServerError,
+			"error saving contact: %v",
+			err,
+		)
+		c.HTML(http.StatusOK, "new", gin.H{
+			"contact": contact,
+		})
+		return
+	}
+	flashMessage(c, "Created New Contact!")
+	c.Redirect(http.StatusFound, "/contacts")
+}
+
+func (sr *Server) contactsView(c *gin.Context) {
+	idStr := c.Param("contact_id")
+	contactID, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.String(
+			http.StatusBadRequest,
+			"Invalid contact id: %s",
+			c.Param("contact_id"),
+		)
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	contact, err := sr.db.Find(contactID)
+	if err != nil {
+		c.String(
+			http.StatusNotFound,
+			"Contact not found: %s",
+			idStr,
+		)
+		return
+	}
+	c.HTML(http.StatusOK, "show", gin.H{
+		"contact": contact,
+	})
+}
+
+func (sr *Server) downloadArchiveFile(c *gin.Context) {
+	fileName := sr.archiver.ArchiveFile()
+	curDir, err := os.Getwd()
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	//content, err := os.ReadFile(fileName)
+	//if err != nil {
+	//	c.String(
+	//		http.StatusInternalServerError,
+	//		"Error reading archive file: %s: %v",
+	//		fileName,
+	//		err,
+	//	)
+	//	c.AbortWithStatus(http.StatusInternalServerError)
+	//	return
+	//}
+	//c.Header("Content-Disposition", "attachment; filename="+fileName)
+	//c.Header("Content-Type", "application/text/plain")
+	//c.Header("Accept-Length", fmt.Sprintf("%d", len(content)))
+	c.FileAttachment(curDir, fileName)
+}
 
 func flashMessage(c *gin.Context, message string) {
 	session := sessions.Default(c)
